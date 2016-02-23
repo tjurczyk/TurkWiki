@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 
-import nltk
 import re
-from pprint import pprint
-import csv
 import random
 from collections import defaultdict
+
+import nltk
 from numpy import mean, median, std
+
+import csv
+from extras.dcsv import UnicodeWriter
+
 
 ARTICLE_TYPES = {'MUSIC', 'TV', 'TRAVEL', 'ART', 'SPORT', 'COUNTRY', 'MOVIES', 'HISTORICAL EVENTS', 'SCIENCE', 'FOOD'}
 
@@ -134,6 +137,8 @@ class DataParser:
 class CSVParser:
     results_batch_dir = "batch-results/"
     input_batch_dir = "batch-input/"
+    input_paraphrase_batch_dir = "batch-input-paraphrase/"
+    input_requestion_batch_dir = "batch-input-requestion/"
 
     def __init__(self):
         pass
@@ -146,6 +151,46 @@ class CSVParser:
                 writer.writerow((i["paragraph_id"].encode("utf-8"), i["mt_str"].encode("utf-8")))
             except KeyError:
                 return KeyError("paragraph_id/mt_str not in the dictionary")
+
+    def prepare_batch_file_for_paraphrase(self, annotated_data, filename):
+        """
+        This method takes a data that has been parsed from some batch file
+        from MTurk (some .csv file) and for each entry it creates a csv file
+        ready for paraphrase task.
+
+        :param annotated_data - list of annotated paragraphs with questions.
+        Each dict should have keys: "paragraph_id", "question", "candidates" and "sentences"
+        """
+
+        writer = csv.writer(open(self.input_paraphrase_batch_dir + filename, "w"))
+        writer.writerow(('paragraph_id', 'content'))
+
+        #uw = UnicodeWriter(open(self.input_paraphrase_batch_dir + filename, "w"))
+
+        #uw.writerow(('paragraph_id', 'content'))
+
+        for i in annotated_data:
+            answers = i["candidates"].split(",")
+            #print ("answers: %s" % answers)
+            sentences_str = "</br>".join([i["sentences"][int(j)-1] for j in answers])
+            e_string = "<font color=\"blue\">Question</font>: " + i["question"].encode("utf-8") + \
+                       "<br/><font color=\"blue\">Sentence(s)</font>: "
+            print ("will be storing sentences str: %s" % sentences_str.encode("utf-8"))
+            writer.writerow((i["paragraph_id"].encode("utf-8"), e_string + sentences_str.encode("utf-8")))
+            #uw.writerow((i["paragraph_id"], e_string + sentences_str))
+
+    def prepare_batch_file_for_another_question(self, annotated_data, sentences_used, filename):
+        """
+        This method takes a data that has been parsed from some batch file
+        from MTurk (some .csv file) and for each entry it creates a csv file
+        ready for requestion task
+
+        :param annotated_data - list of annotated paragraphs with questions.
+        Each dict should have keys: "paragraph_id", "question", "candidates" and "sentences"
+        :param sentences_used - list of annotated paragraphs, where each entry is in form of:
+        'paragrah_id': [ _list_of_sentences_used_ ]
+        """
+        pass
 
     def extract_batch_file(self, json_data, csv_filename):
         csv_data = self.parse_csv_results_file(csv_filename)
