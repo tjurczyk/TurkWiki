@@ -165,10 +165,6 @@ class CSVParser:
         writer = csv.writer(open(self.input_paraphrase_batch_dir + filename, "w"))
         writer.writerow(('paragraph_id', 'content'))
 
-        #uw = UnicodeWriter(open(self.input_paraphrase_batch_dir + filename, "w"))
-
-        #uw.writerow(('paragraph_id', 'content'))
-
         for i in annotated_data:
             answers = i["candidates"].split(",")
             #print ("answers: %s" % answers)
@@ -177,9 +173,8 @@ class CSVParser:
                        "<br/><font color=\"blue\">Sentence(s)</font>: "
             print ("will be storing sentences str: %s" % sentences_str.encode("utf-8"))
             writer.writerow((i["paragraph_id"].encode("utf-8"), e_string + sentences_str.encode("utf-8")))
-            #uw.writerow((i["paragraph_id"], e_string + sentences_str))
 
-    def prepare_batch_file_for_another_question(self, annotated_data, sentences_used, filename):
+    def prepare_batch_file_for_second_question(self, annotated_data, sentences_used, filename):
         """
         This method takes a data that has been parsed from some batch file
         from MTurk (some .csv file) and for each entry it creates a csv file
