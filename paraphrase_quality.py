@@ -9,7 +9,7 @@ from numpy import mean, median, std
 
 import csv
 
-csv_filename = "batch-results-paraphrase/batch5-paraphrase.csv"
+csv_filename = "batch-results-paraphrase/batch100-paraphrase.csv"
 
 csv_file = open(csv_filename)
 csv_data = csv.reader(csv_file)
@@ -55,8 +55,8 @@ for i in d:
     old_overlapping_question = (float(len(q_set.intersection(s_set)))/len(q_words))
     old_overlapping_sentence = (float(len(q_set.intersection(s_set)))/len(s_words))
 
-    new_overlapping_paraphrase = (float(len(p_set.intersection(s_set)))/max(len(p_words), len(p_words)))
-    new_overlapping_sentence = (float(len(p_set.intersection(s_set)))/max(len(p_words), len(s_words)))
+    new_overlapping_paraphrase = (float(len(p_set.intersection(s_set)))/len(p_words))
+    new_overlapping_sentence = (float(len(p_set.intersection(s_set)))/len(s_words))
 
     old_sum_question += old_overlapping_question*100
     old_sum_sentence += old_overlapping_sentence*100

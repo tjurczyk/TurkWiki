@@ -12,8 +12,8 @@ aa = AnnotationAnalyzer()
 # INPUT FOR THE SCRIPT
 ####
 
-main_data_file = "data.json"
-filename_to_analyze_from = "batch1sq.csv"
+main_data_file = "data/data2.json"
+filename_to_analyze_from = "batch101sq.csv"
 
 ####
 

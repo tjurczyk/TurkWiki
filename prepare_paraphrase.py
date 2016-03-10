@@ -8,15 +8,22 @@ from pprint import pprint
 parser = DataParser()
 csv_parser = CSVParser()
 
+####
+# INPUT FOR THE SCRIPT
+####
+
+main_data_file = "data/data2.json"
+file_to_get_from = "batch101sq.csv"
+paraphrase_input_file = "batch101sq-paraphrase.csv"
+
+####
+
 # This is main data (from Tim)
-with open('data.json') as data_file:
+with open(main_data_file) as data_file:
     data = json.load(data_file)
 
 # Segment it into json
 segmented_data = parser.parse_data(data)
-
-file_to_get_from = "batch5.csv"
-paraphrase_input_file = "batch5-paraphrase.csv"
 
 annotated_data = csv_parser.extract_batch_file(segmented_data, file_to_get_from)
 

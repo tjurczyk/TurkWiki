@@ -21,7 +21,8 @@ class DataParser:
     ACCEPTED_ARTICLE_TYPES = None
     SKIPPED_SECTIONS = {'See also', 'See Also', 'References', 'Bibliography', 'Further reading',
                         'External links', 'Footnotes', 'References and sources', 'Sources', 'Visual summary',
-                        'Notes'}
+                        'Notes', 'Textbooks', 'Printed sources', 'Physiology', 'Equestrianism', 'Biomolecule',
+                        }
 
     LI_MARKS = {'</li><li>', '<li>', '</li>'}
 
@@ -136,9 +137,11 @@ class DataParser:
 
 class CSVParser:
     results_batch_dir = "batch-results/"
+    results_paraphrase_batch_dir = "batch-results-paraphrase/"
+
     input_batch_dir = "batch-input/"
     input_paraphrase_batch_dir = "batch-input-paraphrase/"
-    input_requestion_batch_dir = "batch-input-requestion/"
+    #input_requestion_batch_dir = "batch-input-requestion/"
 
     def __init__(self):
         pass
@@ -151,6 +154,16 @@ class CSVParser:
                 writer.writerow((i["paragraph_id"].encode("utf-8"), i["mt_str"].encode("utf-8")))
             except KeyError:
                 return KeyError("paragraph_id/mt_str not in the dictionary")
+
+    def prepare_batch_file_second_question(self, json_data, filename):
+        writer = csv.writer(open(self.input_batch_dir + filename, "w"))
+        writer.writerow(('paragraph_id', 'candidates', 'content'))
+        for i in json_data:
+            try:
+                writer.writerow((i["paragraph_id"].encode("utf-8"), ", ".join(map(str, i["candidates"])),
+                                 i["mt_str"].encode("utf-8")))
+            except KeyError:
+                return KeyError("paragraph_id/mt_str/candidates not in the dictionary")
 
     def prepare_batch_file_for_paraphrase(self, annotated_data, filename):
         """
@@ -168,24 +181,48 @@ class CSVParser:
         for i in annotated_data:
             answers = i["candidates"].split(",")
             #print ("answers: %s" % answers)
-            sentences_str = "</br>".join([i["sentences"][int(j)-1] for j in answers])
+
+            try:
+                sentences_str = "</br>".join([i["sentences"][int(j)-1] for j in answers])
+            except IndexError:
+                print ("Index error, answers: %s, i[sentences]: %s" % (answers, i["sentences"]))
+                exit(1)
+
             e_string = "<font color=\"blue\">Question</font>: " + i["question"].encode("utf-8") + \
                        "<br/><font color=\"blue\">Sentence(s)</font>: "
             print ("will be storing sentences str: %s" % sentences_str.encode("utf-8"))
             writer.writerow((i["paragraph_id"].encode("utf-8"), e_string + sentences_str.encode("utf-8")))
 
-    def prepare_batch_file_for_second_question(self, annotated_data, sentences_used, filename):
+    def prepare_batch_file_for_second_question(self, original_data, new_data_filename):
         """
         This method takes a data that has been parsed from some batch file
         from MTurk (some .csv file) and for each entry it creates a csv file
         ready for requestion task
 
-        :param annotated_data - list of annotated paragraphs with questions.
+        :param original_data - list of annotated paragraphs with questions.
         Each dict should have keys: "paragraph_id", "question", "candidates" and "sentences"
-        :param sentences_used - list of annotated paragraphs, where each entry is in form of:
-        'paragrah_id': [ _list_of_sentences_used_ ]
+        :param new_data_filename - a filename for the second question annotation
         """
-        pass
+
+        new_data = []
+
+        for i in original_data:
+            candidates = [int(j) for j in i["candidates"].split(",")]
+            new_str = i["mt_str"]
+
+            #print ("Candidates: %s\nText was: %s" % (candidates, new_str))
+
+            for j in candidates:
+                #print ("Trying to find: %s" % i["sentences"][j-1])
+                #if not re.search(i["sentences"][j-1], new_str):
+                    #print ("Not found for string: %s" % i["sentences"][j-1])
+                    #print ("Str is: %s" % new_str)
+                #new_str = re.sub(i["sentences"][j-1], '<strike>' + i["sentences"][j-1] + '</strike>', new_str)
+                new_str = new_str.replace(i["sentences"][j-1], "<strike>" + i["sentences"][j-1] + "</strike>")
+
+            new_data.append({"paragraph_id": i["paragraph_id"], "mt_str": new_str, "candidates": candidates})
+
+        self.prepare_batch_file_second_question(new_data, new_data_filename)
 
     def extract_batch_file(self, json_data, csv_filename):
         csv_data = self.parse_csv_results_file(csv_filename)
@@ -202,12 +239,39 @@ class CSVParser:
             if i["paragraph_id"] in csv_data.keys():
                 di = {'paragraph_id': i["paragraph_id"], 'question': csv_data[i["paragraph_id"]]["question"],
                       'candidates': csv_data[i["paragraph_id"]]["candidates"], 'sentences': i["sentences"],
-                      'filename': csv_filename}
+                      'filename': csv_filename, 'name': i["Name"], 'section': i["Section"], 'mt_str': i["mt_str"]}
+                extracted.append(di)
+
+        for i in extracted:
+            # print ("Working on extracted: %s" % i["paragraph_id"])
+            if i["paragraph_id"] in tmp_added:
+                print("\n\nHAVE DUPLICATE: %s\n\n" % i["paragraph_id"])
+                exit(1)
+
+            tmp_added.add(i["paragraph_id"])
+
+        return extracted
+
+    def extract_paraphrase_batch_file(self, json_data, csv_filename):
+        csv_data = self.parse_csv_paraphrase_results_file(csv_filename)
+        print ("csv_data: %s" % len(csv_data))
+
+        extracted = []
+        tmp_added = set()
+
+        for i in json_data:
+            # print ("Working on paragraph id: %s" % i["paragraph_id"])
+
+            if i["paragraph_id"] in csv_data.keys():
+                di = {'paragraph_id': i["paragraph_id"],
+                      'question-paraphrase': csv_data[i["paragraph_id"]]["question-paraphrase"],
+                      'sentences': i["sentences"], 'filename': csv_filename, 'name': i["Name"], 'section': i["Section"]}
                 extracted.append(di)
 
         for i in extracted:
             if i["paragraph_id"] in tmp_added:
-                print("\n\nHAVE DUPLICATE: %s\n\n" % i["paragraph_id"])
+                print("\n\nPARAPHRASE HAVE DUPLICATE: %s\n\n" % i["paragraph_id"])
+                exit(1)
 
             tmp_added.add(i["paragraph_id"])
 
@@ -234,6 +298,26 @@ class CSVParser:
 
             d[unicode(row[p_index], "utf-8")] = {'question': unicode(row[q_index], "utf-8"),
                                                  'candidates': unicode(row[c_index], "utf-8")}
+
+        return d
+
+    def parse_csv_paraphrase_results_file(self, csv_filename):
+        csv_file = open(self.results_paraphrase_batch_dir + csv_filename)
+        csv_data = csv.reader(csv_file)
+
+        d = {}
+
+        q_index = None
+        c_index = None
+        p_index = None
+
+        for i, row in enumerate(csv_data):
+            if i == 0:
+                q_index = row.index('Answer.ParaphraseQuestionBox')
+                p_index = row.index('Input.paragraph_id')
+                continue
+
+            d[unicode(row[p_index], "utf-8")] = {'question-paraphrase': unicode(row[q_index], "utf-8")}
 
         return d
 
@@ -308,7 +392,8 @@ class AnnotationAnalyzer:
 
         # Check for each single sentence how many words between question and sentence answer are overlapping
         # Also, count why/what questions
-        overlapping = []
+        sum_question = 0.0
+        sum_sentence = 0.0
         q_type_counts = {"what": 0, "why": 0, "who": 0, "where": 0, "when": 0, "how": 0, "other": 0}
         wt = nltk.RegexpTokenizer(r'\w+').tokenize
 
@@ -320,7 +405,6 @@ class AnnotationAnalyzer:
                 if k in q_words:
                     q_type_counts[k] += 1
                     found_type = True
-                    break
 
             if not found_type:
                 q_type_counts["other"] += 1
@@ -328,18 +412,32 @@ class AnnotationAnalyzer:
             if len(i["candidates"].split(",")) > 1:
                 continue
 
-            a_words = [x.lower() for x in wt(i["sentences"][int(i["candidates"])-1])]
+            try:
+                s_words = [x.lower() for x in wt(i["sentences"][int(i["candidates"])-1])]
+            except IndexError:
+                print ("i[candidates]: %s, i[sentences]: %s" % (i["sentences"], i["candidates"]))
+                exit(1)
 
-            overlapping.append(float(len(set(q_words).intersection(a_words)))/len(q_words))
+            q_set = set(q_words)
+            s_set = set(s_words)
+
+            overlapping_question = (float(len(q_set.intersection(s_set)))/len(q_words))
+            if len(s_words) == 0:
+                print ("zero for q words: %s" % q_words)
+                exit(1)
+
+            overlapping_sentence = (float(len(q_set.intersection(s_set)))/len(s_words))
+
+            sum_question += overlapping_question*100
+            sum_sentence += overlapping_sentence*100
 
             #print ("q_words: %s\na_words: %s" % (q_words, a_words))
 
-        print (u'\u2022' + " Overlapping words between q and sentence answer (only for single,"
-                           " normalized by the length of the question):")
-        print ("Min:  %.2f%% Max:   %.2f%%" % (min(overlapping)*100, max(overlapping)*100))
-        print ("Mean: %.2f%% Median %.2f%%" % (mean(overlapping)*100, median(overlapping)*100))
-        stdev = std(overlapping)*100
-        print ("Std:  %.2f%%\n" % stdev)
+        sum_question /= len(data)
+        sum_sentence /= len(data)
+
+        print ("Avg overlapping by q: %.2f\nAvg overlapping by s: %.2f" % (sum_question, sum_sentence))
+        print ("F1 for old overlapping: %.2f\n" % (2*sum_question*sum_sentence/(sum_question+sum_sentence)))
 
         print (u'\u2022' + " Distribution of wh* types of questions:")
         for k, v in q_type_counts.iteritems():
@@ -349,7 +447,6 @@ class AnnotationAnalyzer:
 class DataGenerator:
     """
     Class to generate data from annotated paragraphs
-    Data will be in form to be read by our framework
     """
     data_gen_filedir = "gen_data/"
 
