@@ -2,7 +2,9 @@
 
 import re
 import random
+import math
 from collections import defaultdict
+from pprint import pprint
 
 import nltk
 from numpy import mean, median, std
@@ -224,6 +226,54 @@ class CSVParser:
 
         self.prepare_batch_file_second_question(new_data, new_data_filename)
 
+    def prepare_batch_file_for_fixing_question(self, annotated_data, new_data_filename):
+        new_data = []
+
+        for i in annotated_data:
+            candidates = [int(j) for j in i["candidates"].split(",")]
+            new_str = i["mt_str"]
+
+            #print ("Candidates: %s\nText was: %s" % (candidates, new_str))
+
+            if i["paragraph_id"] == "Family_Guy-Early_history_and_cancellation":
+                print ("Candidates: %s\nSentences: %s" % (candidates, i["sentences"]))
+
+            for j in candidates:
+                #print ("Trying to find: %s" % i["sentences"][j-1])
+                #if not re.search(i["sentences"][j-1], new_str):
+                    #print ("Not found for string: %s" % i["sentences"][j-1])
+                    #print ("Str is: %s" % new_str)
+                #new_str = re.sub(i["sentences"][j-1], '<strike>' + i["sentences"][j-1] + '</strike>', new_str)
+                if i["sentences"][j-1] != "":
+                    new_str = new_str.replace(i["sentences"][j-1], "<font color=\"green\">" + i["sentences"][j-1] + "</font>")
+
+            new_str += "<br/><font color=\"blue\">Current Question: " + i["question"] + "</font>"
+
+            if i["paragraph_id"] == "Family_Guy-Early_history_and_cancellation":
+                print ("new_str for this item: %s" % new_str)
+
+            new_data.append({"paragraph_id": i["paragraph_id"], "old_question": i["question"],
+                             "mt_str": new_str, "candidates": candidates})
+
+
+        writer = csv.writer(open(new_data_filename, "w"))
+        writer.writerow(('paragraph_id', 'old_question', 'content'))
+        itera = 0
+
+        for i in new_data:
+            try:
+                writer.writerow((i["paragraph_id"].encode("utf-8"), i["old_question"].encode("utf-8"),
+                                 i["mt_str"].encode("utf-8")))
+            except KeyError:
+                return KeyError("paragraph_id/mt_str/old_question not in the dictionary")
+
+            itera += 1
+            # if itera == 20:
+            #     break
+
+        print ("Written %d data rows" % itera)
+
+
     def extract_batch_file(self, json_data, csv_filename):
         csv_data = self.parse_csv_results_file(csv_filename)
         print ("csv_data: %s" % len(csv_data))
@@ -239,7 +289,8 @@ class CSVParser:
             if i["paragraph_id"] in csv_data.keys():
                 di = {'paragraph_id': i["paragraph_id"], 'question': csv_data[i["paragraph_id"]]["question"],
                       'candidates': csv_data[i["paragraph_id"]]["candidates"], 'sentences': i["sentences"],
-                      'filename': csv_filename, 'name': i["Name"], 'section': i["Section"], 'mt_str': i["mt_str"]}
+                      'filename': csv_filename, 'name': i["Name"], 'section': i["Section"], 'mt_str': i["mt_str"],
+                      'type': i["Type"]}
                 extracted.append(di)
 
         for i in extracted:
@@ -265,7 +316,8 @@ class CSVParser:
             if i["paragraph_id"] in csv_data.keys():
                 di = {'paragraph_id': i["paragraph_id"],
                       'question-paraphrase': csv_data[i["paragraph_id"]]["question-paraphrase"],
-                      'sentences': i["sentences"], 'filename': csv_filename, 'name': i["Name"], 'section': i["Section"]}
+                      'sentences': i["sentences"], 'filename': csv_filename, 'name': i["Name"], 'section': i["Section"],
+                      'type': i["Type"]}
                 extracted.append(di)
 
         for i in extracted:
@@ -276,6 +328,67 @@ class CSVParser:
             tmp_added.add(i["paragraph_id"])
 
         return extracted
+
+    def parse_all_data(self, segmented_data, files_set):
+        extracted = {}
+
+        for i in files_set:
+            if "question" not in i and "paraphrase" not in i:
+                raise ValueError
+
+            unpacked_qs = []
+            unpacked_ps = []
+
+            for j in i["question"]:
+                unpacked_qs.extend(self.extract_batch_file(segmented_data, j))
+
+            for j in i["paraphrase"]:
+                unpacked_ps.extend(self.extract_paraphrase_batch_file(segmented_data, j))
+
+            for j in unpacked_qs:
+                e = {"paragraph_id": j["paragraph_id"],
+                     "type": j["type"],
+                     "name": j["name"],
+                     "mt_str": j["mt_str"],
+                     "section": j["section"],
+                     "question": j["question"],
+                     "sentences": j["sentences"],
+                     "candidates": j["candidates"],
+                     "filename": j["filename"]}
+
+                if e["type"] not in extracted:
+                    extracted[e["type"]] = [e, ]
+                else:
+                    extracted[e["type"]].append(e)
+
+                corr_par = filter(lambda item: item["paragraph_id"] == e["paragraph_id"], unpacked_ps)
+                if len(corr_par) == 0:
+                    print ("corr par is 0 for paragraph %s in file %s" % (e["paragraph_id"], e["filename"]))
+                    continue
+                    # exit(1)
+                elif len(corr_par) != 1:
+                    print ("corr par is not 1: %s\ne dict:" % (len(corr_par)))
+                    pprint(e)
+                    exit(1)
+
+                ep = {"paragraph_id": e["paragraph_id"],
+                      "type": j["type"],
+                      "name": e["name"],
+                      "mt_str": e["mt_str"],
+                      "section": e["section"],
+                      "question": corr_par[0]["question-paraphrase"],
+                      "sentences": e["sentences"],
+                      "candidates": e["candidates"],
+                      "filename": corr_par[0]["filename"]}
+
+                if ep["type"] not in extracted:
+                    extracted[ep["type"]] = [ep, ]
+                else:
+                    extracted[ep["type"]].append(ep)
+
+        return extracted
+
+
 
     def parse_csv_results_file(self, csv_filename):
         csv_file = open(self.results_batch_dir + csv_filename)
@@ -459,6 +572,52 @@ class DataGenerator:
 
         return [int(i) for i in split_items]
 
+    def prepare_split_paragraphs(self, split_values, data):
+        if "train" not in split_values or "validate" not in split_values or "test" not in split_values:
+            raise IndexError("split_values not complete")
+
+        data_splits = {"train": [], "validate": [], "test": []}
+
+        for k, v in data.iteritems():
+            # print ("This v len: %d" % len(v))
+
+            train_to_select = int(math.floor(split_values["train"] * len(v)))
+            validate_to_select = int(math.floor(split_values["validate"] * len(v)))
+
+            train_ids_sampled = random.sample(xrange(len(v)), train_to_select)
+            data_splits["train"].extend(v[i] for i in train_ids_sampled)
+
+            # print ("For category %s, train split is %.1f, ids sampled: %s\n" %
+            # (k, split_values["train"], train_ids_sampled))
+
+            remaining = set(xrange(len(v))) - set(train_ids_sampled)
+            validate_ids_sampled = random.sample(remaining, validate_to_select)
+            data_splits["validate"].extend(v[i] for i in validate_ids_sampled)
+
+            # print ("For category %s, validate split is %.1f, ids sampled: %s\n" %
+            # (k, split_values["validate"], validate_ids_sampled))
+
+            if len(set(train_ids_sampled).intersection(set(validate_ids_sampled))) != 0:
+                print ("Train and validate somehow overlap! Shouldn't have happened")
+                exit(1)
+
+            test_ids_sampled = [a for a in xrange(len(v)) if a not in train_ids_sampled and a not in validate_ids_sampled]
+            data_splits["test"].extend(v[i] for i in test_ids_sampled)
+            if len(set(train_ids_sampled).intersection(set(test_ids_sampled))) != 0:
+                print ("Train and test somehow overlap! Shouldn't have happened")
+                exit(1)
+
+            # print ("For category %s, test split is %.1f, ids sampled: %s\n" %
+            # (k, split_values["test"], test_ids_sampled))
+
+            if len(train_ids_sampled) + len(validate_ids_sampled) + len(test_ids_sampled) != len(v):
+                print ("Train, validate and test sets don't add up to!")
+                exit(1)
+
+        return data_splits
+
+
+
     def generate_txt_file(self, data, filename):
         tsv_file = open(self.data_gen_filedir + filename, "w")
 
@@ -472,8 +631,9 @@ class DataGenerator:
 
             for i, j in enumerate(paragraph["sentences"]):
                 if j == "":
-                    print ("WARNING: it's empty! paragraph_id: %s in file: %s" %
-                           (paragraph["paragraph_id"], paragraph["filename"]))
+                    # print ("WARNING: there is an empty sentence! paragraph_id: %s in file: %s" %
+                    #        (paragraph["paragraph_id"], paragraph["filename"]))
+                    pass
                 else:
                     tsv_file.write(question.encode("utf-8") + "\t" + j.encode("utf-8") + "\t" +
                                    str(int(((i+1) in answers))) + "\n")
@@ -483,19 +643,27 @@ class DEPDataParser:
     """
     Class to prepare data for dependency parsing
     """
+    data_gen_filedir = "gen_data/"
 
     def __init__(self):
         pass
 
     def generate_file(self, data, filename):
-        dep_file = open(filename, "w")
+        dep_file = open(self.data_gen_filedir + filename, "w")
 
         for paragraph in data:
             question = paragraph["question"]
             dep_file.write(question.encode("utf-8") + "\n")
             for i, j in enumerate(paragraph["sentences"]):
                 if j == "":
-                    print ("WARNING: it's empty! paragraph_id: %s in file: %s" %
-                           (paragraph["paragraph_id"], paragraph["filename"]))
+                    # print ("WARNING: there is an empty sentence! paragraph_id: %s in file: %s" %
+                    #        (paragraph["paragraph_id"], paragraph["filename"]))
+                    pass
                 else:
                     dep_file.write(j.encode("utf-8") + "\n")
+
+
+class DataCombiner:
+    """
+    This class contains a support for combining original annotation
+    """
