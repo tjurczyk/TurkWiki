@@ -17,7 +17,7 @@ filename_to_analyze_from = "batch101sq.csv"
 
 ####
 
-# This is main data (from Tim)
+# This is main data (from Tim)`
 with open(main_data_file) as data_file:
     data = json.load(data_file)
 

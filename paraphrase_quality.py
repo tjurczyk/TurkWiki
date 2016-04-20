@@ -9,7 +9,13 @@ from numpy import mean, median, std
 
 import csv
 
-csv_filename = "batch-results-paraphrase/batch100-paraphrase.csv"
+####
+# INPUT FOR THE SCRIPT
+####
+
+csv_filename = "batch-results-paraphrase/batch101sq-paraphrase.csv"
+
+####
 
 csv_file = open(csv_filename)
 csv_data = csv.reader(csv_file)
@@ -26,12 +32,12 @@ for i, row in enumerate(csv_data):
 
     matches = reg_exp.search(unicode(row[input_index], "utf-8"))
     question = matches.group(1)
-    sentence = matches.group(2)
+    sentences = matches.group(2).split("</br>")
 
     paraphrase = unicode(row[parap_index], "utf-8")
 
-    print ("\nSentence: %s\nQuestion: %s\nParaphrase: %s\n" % (sentence, question, paraphrase))
-    d.append({'sentence': sentence, 'question': question, 'paraphrase': paraphrase})
+    # print ("\nSentences: %s\nQuestion: %s\nParaphrase: %s\n" % (sentences, question, paraphrase))
+    d.append({'sentences': sentences, 'question': question, 'paraphrase': paraphrase})
 
 wt = nltk.RegexpTokenizer(r'\w+').tokenize
 difference_sum = 0.0
@@ -43,26 +49,30 @@ new_sum_sentence = 0.0
 
 for i in d:
     q_words = [x.lower() for x in wt(i["question"]) if x not in stopwords]
-    s_words = [x.lower() for x in wt(i["sentence"]) if x not in stopwords]
-    p_words = [x.lower() for x in wt(i["paraphrase"]) if x not in stopwords]
-
     q_set = set(q_words)
-    s_set = set(s_words)
+    p_words = [x.lower() for x in wt(i["paraphrase"]) if x not in stopwords]
     p_set = set(p_words)
 
-    #print ("old intersection: %s\nnew intersection: %s\n" % (q_set.intersection(s_set), p_set.intersection(s_set)))
+    for s in i["sentences"]:
+        s_words = [x.lower() for x in wt(s) if x not in stopwords]
+        if len(s_words) == 0:
+            continue
+        # print ("Sentences: %s" % i["sentences"])
+        s_set = set(s_words)
 
-    old_overlapping_question = (float(len(q_set.intersection(s_set)))/len(q_words))
-    old_overlapping_sentence = (float(len(q_set.intersection(s_set)))/len(s_words))
+        #print ("old intersection: %s\nnew intersection: %s\n" % (q_set.intersection(s_set), p_set.intersection(s_set)))
 
-    new_overlapping_paraphrase = (float(len(p_set.intersection(s_set)))/len(p_words))
-    new_overlapping_sentence = (float(len(p_set.intersection(s_set)))/len(s_words))
+        old_overlapping_question = (float(len(q_set.intersection(s_set)))/len(q_words))
+        old_overlapping_sentence = (float(len(q_set.intersection(s_set)))/len(s_words))
 
-    old_sum_question += old_overlapping_question*100
-    old_sum_sentence += old_overlapping_sentence*100
+        new_overlapping_paraphrase = (float(len(p_set.intersection(s_set)))/len(p_words))
+        new_overlapping_sentence = (float(len(p_set.intersection(s_set)))/len(s_words))
 
-    new_sum_paraphrase += new_overlapping_paraphrase*100
-    new_sum_sentence += new_overlapping_sentence*100
+        old_sum_question += old_overlapping_question*100
+        old_sum_sentence += old_overlapping_sentence*100
+
+        new_sum_paraphrase += new_overlapping_paraphrase*100
+        new_sum_sentence += new_overlapping_sentence*100
 
     #difference_sum += (new_overlapping*100-old_overlapping*100)
 

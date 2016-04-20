@@ -329,8 +329,127 @@ class CSVParser:
 
         return extracted
 
-    def parse_all_data(self, segmented_data, files_set):
+    def extract_fix_paraphrase_file(self, csv_filename):
+        csv_file = open(csv_filename)
+        csv_data = csv.reader(csv_file)
+
+        d = []
+
+        # print ("csv_data[0]: %s" % type(csv_data))
+
+        question_index = None
+        paragraph_index = None
+        paraphrase_index = None
+
+
+        for i, row in enumerate(csv_data):
+            if i == 0:
+                question_index = row.index('Input.old_question')
+                paragraph_index = row.index('Input.paragraph_id')
+                paraphrase_index = row.index('Answer.QuestionTextBox')
+                continue
+
+            if row[paraphrase_index] == "{}":
+                continue
+
+            d.append({'question': unicode(row[question_index], "utf-8"),
+                      'paragraph_id': unicode(row[paragraph_index], "utf-8"),
+                      'paraphrase_fix': unicode(row[paraphrase_index], "utf-8")})
+
+        return d
+
+    def parse_all_data(self, segmented_data, files_set, fix_data=None):
+        def check_fix_data(l, p_id, q):
+            for x in l:
+                if x["question"] == q and x["paragraph_id"] == p_id:
+                    return x["paraphrase_fix"]
+            return None
+
         extracted = {}
+        r_yes = 0
+
+        for i in files_set:
+            if "question" not in i and "paraphrase" not in i:
+                raise ValueError
+
+            unpacked_qs = []
+            unpacked_ps = []
+
+            for j in i["question"]:
+                unpacked_qs.extend(self.extract_batch_file(segmented_data, j))
+
+            for j in i["paraphrase"]:
+                unpacked_ps.extend(self.extract_paraphrase_batch_file(segmented_data, j))
+
+            for j in unpacked_qs:
+                e = {"paragraph_id": j["paragraph_id"],
+                     "type": j["type"],
+                     "name": j["name"],
+                     "mt_str": j["mt_str"],
+                     "section": j["section"],
+                     "question": j["question"],
+                     "sentences": j["sentences"],
+                     "candidates": j["candidates"],
+                     "is_paraphrase": False,
+                     "filename": j["filename"]}
+
+
+                if fix_data:
+                    ret = check_fix_data(fix_data, e["paragraph_id"], e["question"])
+                    if ret:
+                        e["question"] = ret
+                        r_yes += 1
+
+
+                if e["type"] not in extracted:
+                    extracted[e["type"]] = [e, ]
+                else:
+                    extracted[e["type"]].append(e)
+
+                corr_par = filter(lambda item: item["paragraph_id"] == e["paragraph_id"], unpacked_ps)
+                if len(corr_par) == 0:
+                    print ("corr par is 0 for paragraph %s in file %s" % (e["paragraph_id"], e["filename"]))
+                    continue
+                    # exit(1)
+                elif len(corr_par) != 1:
+                    print ("corr par is not 1: %s\ne dict:" % (len(corr_par)))
+                    pprint(e)
+                    exit(1)
+
+                ep = {"paragraph_id": e["paragraph_id"],
+                      "type": j["type"],
+                      "name": e["name"],
+                      "mt_str": e["mt_str"],
+                      "section": e["section"],
+                      "question": corr_par[0]["question-paraphrase"],
+                      "sentences": e["sentences"],
+                      "candidates": e["candidates"],
+                      "is_paraphrase": True,
+                      "filename": corr_par[0]["filename"]}
+
+                if fix_data:
+                    ret = check_fix_data(fix_data, ep["paragraph_id"], ep["question"])
+                    if ret:
+                        ep["question"] = ret
+                        r_yes += 1
+
+                if ep["type"] not in extracted:
+                    extracted[ep["type"]] = [ep, ]
+                else:
+                    extracted[ep["type"]].append(ep)
+
+        print ("In parse data, fix_data has been used and %d questions have been replaced" % r_yes)
+        return extracted
+
+    def parse_paraphrase_data(self, segmented_data, files_set, fix_data=None):
+        def check_fix_data(l, p_id, q):
+            for x in l:
+                if x["question"] == q and x["paragraph_id"] == p_id:
+                    return x["paraphrase_fix"]
+            return None
+
+        extracted = {}
+        r_yes = 0
 
         for i in files_set:
             if "question" not in i and "paraphrase" not in i:
@@ -356,10 +475,17 @@ class CSVParser:
                      "candidates": j["candidates"],
                      "filename": j["filename"]}
 
-                if e["type"] not in extracted:
-                    extracted[e["type"]] = [e, ]
-                else:
-                    extracted[e["type"]].append(e)
+
+                if fix_data:
+                    ret = check_fix_data(fix_data, e["paragraph_id"], e["question"])
+                    if ret:
+                        e["question"] = ret
+                        r_yes += 1
+
+                # if e["type"] not in extracted:
+                #     extracted[e["type"]] = [e, ]
+                # else:
+                #     extracted[e["type"]].append(e)
 
                 corr_par = filter(lambda item: item["paragraph_id"] == e["paragraph_id"], unpacked_ps)
                 if len(corr_par) == 0:
@@ -381,14 +507,19 @@ class CSVParser:
                       "candidates": e["candidates"],
                       "filename": corr_par[0]["filename"]}
 
+                if fix_data:
+                    ret = check_fix_data(fix_data, ep["paragraph_id"], ep["question"])
+                    if ret:
+                        ep["question"] = ret
+                        r_yes += 1
+
                 if ep["type"] not in extracted:
                     extracted[ep["type"]] = [ep, ]
                 else:
                     extracted[ep["type"]].append(ep)
 
+        print ("In parse data, fix_data has been used and %d questions have been replaced" % r_yes)
         return extracted
-
-
 
     def parse_csv_results_file(self, csv_filename):
         csv_file = open(self.results_batch_dir + csv_filename)
@@ -522,27 +653,27 @@ class AnnotationAnalyzer:
             if not found_type:
                 q_type_counts["other"] += 1
 
-            if len(i["candidates"].split(",")) > 1:
-                continue
+            candidates = i["candidates"].split(",")
+            for c in candidates:
 
-            try:
-                s_words = [x.lower() for x in wt(i["sentences"][int(i["candidates"])-1])]
-            except IndexError:
-                print ("i[candidates]: %s, i[sentences]: %s" % (i["sentences"], i["candidates"]))
-                exit(1)
+                try:
+                    s_words = [x.lower() for x in wt(i["sentences"][int(c)-1])]
+                except IndexError:
+                    print ("i[candidates]: %s, i[sentences]: %s" % (i["sentences"], i["candidates"]))
+                    exit(1)
 
-            q_set = set(q_words)
-            s_set = set(s_words)
+                q_set = set(q_words)
+                s_set = set(s_words)
 
-            overlapping_question = (float(len(q_set.intersection(s_set)))/len(q_words))
-            if len(s_words) == 0:
-                print ("zero for q words: %s" % q_words)
-                exit(1)
+                overlapping_question = (float(len(q_set.intersection(s_set)))/len(q_words))
+                if len(s_words) == 0:
+                    print ("zero for q words: %s" % q_words)
+                    exit(1)
 
-            overlapping_sentence = (float(len(q_set.intersection(s_set)))/len(s_words))
+                overlapping_sentence = (float(len(q_set.intersection(s_set)))/len(s_words))
 
-            sum_question += overlapping_question*100
-            sum_sentence += overlapping_sentence*100
+                sum_question += overlapping_question*100
+                sum_sentence += overlapping_sentence*100
 
             #print ("q_words: %s\na_words: %s" % (q_words, a_words))
 
